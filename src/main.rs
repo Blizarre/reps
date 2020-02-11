@@ -7,12 +7,15 @@ use std::thread;
 use std::time::Duration;
 
 use clap::{App, Arg};
+use termion::color::Color;
 use termion::raw::IntoRawMode;
 use termion::{async_stdin, color, AsyncReader};
 
 const DURATION_500_MILLISECONDS: Duration = Duration::from_millis(500);
 const DURATION_1_SECOND: Duration = Duration::from_millis(1000);
 
+/// Display a single message on the screen, starting from the upper left.
+/// It will clear the screen and reset the text color at the end.
 fn print_message(message: &str) {
     println!(
         "{}{}{}{}",
@@ -23,7 +26,15 @@ fn print_message(message: &str) {
     );
 }
 
-fn consume_all(stdin: &mut Bytes<AsyncReader>) -> Result<Option<()>, String> {
+/// Consume all the keys from the standard input. Is in charge of detecting if the user request to
+/// the program (ESC or Ctrl-C).
+///
+/// # Returns
+/// - if no keys were pressed, Ok(None)
+/// - If any key was pressed that should not exit the program, Ok(Some)
+/// - If a key was pressed that should stop the program (ESC, Ctrl-C), Err("Exiting")
+/// - If an error occurred, Err(<error message)
+fn consume_all_keystrokes(stdin: &mut Bytes<AsyncReader>) -> Result<Option<()>, String> {
     let mut return_value = Ok(None);
 
     loop {
@@ -42,12 +53,41 @@ fn consume_all(stdin: &mut Bytes<AsyncReader>) -> Result<Option<()>, String> {
     }
 }
 
+/// This method will check if keys were pressed since the last time it was called and will pause
+/// if that's the case until the user press another key.
+/// It will also forward requests to stop the program (and Errors).
 fn handle_pause(stdin: &mut Bytes<AsyncReader>) -> Result<(), String> {
-    if consume_all(stdin)?.is_some() {
+    if consume_all_keystrokes(stdin)?.is_some() {
         print_message("PAUSE");
-        while consume_all(stdin)?.is_none() {
+        while consume_all_keystrokes(stdin)?.is_none() {
             thread::sleep(DURATION_500_MILLISECONDS)
         }
+    }
+    Ok(())
+}
+
+/// Display a countdown wiht the specific label and colors.
+/// It will periodically check if the user entered any input and forward requests to stop the
+/// program as errors.
+fn countdown(
+    stdin: &mut Bytes<AsyncReader>,
+    label: &str,
+    count: u32,
+    color: &dyn Color,
+) -> Result<(), String> {
+    for sec in (1..=count).rev() {
+        print_message(
+            format!(
+                "{}{}\n{}{}s",
+                termion::color::Fg(color),
+                label,
+                termion::color::Fg(color::Blue),
+                sec
+            )
+            .as_str(),
+        );
+        thread::sleep(DURATION_1_SECOND);
+        handle_pause(stdin.by_ref())?;
     }
     Ok(())
 }
@@ -63,12 +103,16 @@ fn main() {
 
     let stdin = async_stdin().bytes();
     let _stdout = stdout();
+
+    // We need to be able to asynchronously check for input from the user, bypassing all the caching
+    // and Control keys handling provided by the terminal. The only way is to put the terminal in
+    // raw mode
     let stdout = _stdout.lock().into_raw_mode().unwrap();
 
-    let num_reps =
-        value_t!(matches.value_of("num_reps"), u32).expect("Invalid num_reps, must be a positive number");
-    let rep_time =
-        value_t!(matches.value_of("rep_time"), u32).expect("Invalid rep_time, must be a positive number");
+    let num_reps = value_t!(matches.value_of("num_reps"), u32)
+        .expect("Invalid num_reps, must be a positive number");
+    let rep_time = value_t!(matches.value_of("rep_time"), u32)
+        .expect("Invalid rep_time, must be a positive number");
     let relax_time = value_t!(matches.value_of("relax_time"), u32)
         .expect("Invalid relax_time, must be a positive number");
 
@@ -76,6 +120,7 @@ fn main() {
 
     let result = start_reps(stdin, num_reps, rep_time, relax_time);
 
+    // Bring the cursor back to a usable state
     println!(
         "{}{}{}{}",
         termion::clear::All,
@@ -93,54 +138,22 @@ fn main() {
         .map_err(|error| println!("{}", error));
 }
 
+/// Display the countdowns using the values provided by the user
 fn start_reps(
     mut stdin: Bytes<AsyncReader>,
     reps: u32,
     time: u32,
     time_between_reps: u32,
 ) -> Result<(), String> {
-    for sec in (1..=3).rev() {
-        print_message(
-            format!(
-                "{}Starting in\n{}{}s",
-                termion::color::Fg(color::Red),
-                termion::color::Fg(color::Blue),
-                sec
-            )
-            .as_str(),
-        );
-        thread::sleep(DURATION_1_SECOND);
-        handle_pause(stdin.by_ref())?;
-    }
+    countdown(&mut stdin, "Starting in", 3, &color::Blue)?;
     for rep in 1..=reps {
-        for sec in (1..=time).rev() {
-            print_message(
-                format!(
-                    "{}Rep #{}/{}\n{}{}s",
-                    termion::color::Fg(color::Red),
-                    rep,
-                    reps,
-                    termion::color::Fg(color::Blue),
-                    sec
-                )
-                .as_str(),
-            );
-            thread::sleep(DURATION_1_SECOND);
-            handle_pause(stdin.by_ref())?;
-        }
-        for sec in (1..=time_between_reps).rev() {
-            print_message(
-                format!(
-                    "{}Relax\n{}{}s",
-                    termion::color::Fg(color::Green),
-                    termion::color::Fg(color::Blue),
-                    sec
-                )
-                .as_str(),
-            );
-            thread::sleep(DURATION_1_SECOND);
-            handle_pause(stdin.by_ref())?;
-        }
+        countdown(
+            &mut stdin,
+            format!("Rep {}/{}", rep, reps).as_str(),
+            time,
+            &color::Red,
+        )?;
+        countdown(&mut stdin, "Relax!", time_between_reps, &color::Green)?;
     }
     Ok(())
 }
