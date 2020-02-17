@@ -10,6 +10,7 @@ use clap::{App, Arg};
 use termion::color::Color;
 use termion::raw::IntoRawMode;
 use termion::{async_stdin, color, AsyncReader};
+use std::process::exit;
 
 const DURATION_500_MILLISECONDS: Duration = Duration::from_millis(500);
 const DURATION_1_SECOND: Duration = Duration::from_millis(1000);
@@ -92,7 +93,13 @@ fn countdown(
     Ok(())
 }
 
-fn main() {
+struct Options {
+    num_reps: u32,
+    rep_time: u32,
+    relax_time: u32
+}
+
+fn parse_args() -> Result<Options, clap::Error> {
     let matches = App::new("Reps")
         .version("0.1.0")
         .author("Simon M. <git@simon.marache.net>")
@@ -101,24 +108,32 @@ fn main() {
         .arg(Arg::with_name("relax_time").required(true))
         .get_matches();
 
+    let num_reps = value_t!(matches.value_of("num_reps"), u32)?;
+    let rep_time = value_t!(matches.value_of("rep_time"), u32)?;
+    let relax_time = value_t!(matches.value_of("relax_time"), u32)?;
+    Ok(Options{num_reps, rep_time, relax_time})
+}
+
+fn main() {
+
+    let opts = match parse_args() {
+        Err(e) => {
+            println!("{}", e);
+            exit(1);
+        },
+        Ok(r) => r
+    };
+
     let stdin = async_stdin().bytes();
-    let _stdout = stdout();
+    let stdout = stdout();
 
     // We need to be able to asynchronously check for input from the user, bypassing all the caching
     // and Control keys handling provided by the terminal. The only way is to put the terminal in
     // raw mode
-    let stdout = _stdout.lock().into_raw_mode().unwrap();
-
-    let num_reps = value_t!(matches.value_of("num_reps"), u32)
-        .expect("Invalid num_reps, must be a positive number");
-    let rep_time = value_t!(matches.value_of("rep_time"), u32)
-        .expect("Invalid rep_time, must be a positive number");
-    let relax_time = value_t!(matches.value_of("relax_time"), u32)
-        .expect("Invalid relax_time, must be a positive number");
-
+    let stdout = stdout.lock().into_raw_mode().unwrap();
     println!("{}{}", termion::clear::All, termion::cursor::Hide);
 
-    let result = start_reps(stdin, num_reps, rep_time, relax_time);
+    let result = start_reps(stdin, opts.num_reps, opts.rep_time, opts.relax_time);
 
     // Bring the cursor back to a usable state
     println!(
