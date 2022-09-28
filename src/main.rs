@@ -7,10 +7,10 @@ use std::thread;
 use std::time::Duration;
 
 use clap::{App, Arg};
+use std::process::exit;
 use termion::color::Color;
 use termion::raw::IntoRawMode;
 use termion::{async_stdin, color, AsyncReader};
-use std::process::exit;
 
 const DURATION_500_MILLISECONDS: Duration = Duration::from_millis(500);
 const DURATION_1_SECOND: Duration = Duration::from_millis(1000);
@@ -67,7 +67,7 @@ fn handle_pause(stdin: &mut Bytes<AsyncReader>) -> Result<(), String> {
     Ok(())
 }
 
-/// Display a countdown wiht the specific label and colors.
+/// Display a countdown with the specific label and colors.
 /// It will periodically check if the user entered any input and forward requests to stop the
 /// program as errors.
 fn countdown(
@@ -96,7 +96,7 @@ fn countdown(
 struct Options {
     num_reps: u32,
     rep_time: u32,
-    relax_time: u32
+    relax_time: u32,
 }
 
 fn parse_args() -> Result<Options, clap::Error> {
@@ -111,17 +111,20 @@ fn parse_args() -> Result<Options, clap::Error> {
     let num_reps = value_t!(matches.value_of("num_reps"), u32)?;
     let rep_time = value_t!(matches.value_of("rep_time"), u32)?;
     let relax_time = value_t!(matches.value_of("relax_time"), u32)?;
-    Ok(Options{num_reps, rep_time, relax_time})
+    Ok(Options {
+        num_reps,
+        rep_time,
+        relax_time,
+    })
 }
 
 fn main() {
-
     let opts = match parse_args() {
         Err(e) => {
             println!("{}", e);
             exit(1);
-        },
-        Ok(r) => r
+        }
+        Ok(r) => r,
     };
 
     let stdin = async_stdin().bytes();
