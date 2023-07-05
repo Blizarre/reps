@@ -1,4 +1,3 @@
-#[macro_use]
 extern crate clap;
 extern crate termion;
 
@@ -6,7 +5,7 @@ use std::io::{stdout, Bytes, Read};
 use std::thread;
 use std::time::Duration;
 
-use clap::{App, Arg};
+use clap::{value_parser, Arg, Command};
 use std::process::exit;
 use termion::color::Color;
 use termion::raw::IntoRawMode;
@@ -100,17 +99,29 @@ struct Options {
 }
 
 fn parse_args() -> Result<Options, clap::Error> {
-    let matches = App::new("Reps")
+    let matches = Command::new("Reps")
         .version("0.1.0")
         .author("Simon M. <git@simon.marache.net>")
-        .arg(Arg::with_name("num_reps").required(true))
-        .arg(Arg::with_name("rep_time").required(true))
-        .arg(Arg::with_name("relax_time").required(true))
-        .get_matches();
+        .arg(
+            Arg::new("num_reps")
+                .value_parser(value_parser!(u32))
+                .required(true),
+        )
+        .arg(
+            Arg::new("rep_time")
+                .value_parser(value_parser!(u32))
+                .required(true),
+        )
+        .arg(
+            Arg::new("relax_time")
+                .value_parser(value_parser!(u32))
+                .required(true),
+        )
+        .try_get_matches()?;
 
-    let num_reps = value_t!(matches.value_of("num_reps"), u32)?;
-    let rep_time = value_t!(matches.value_of("rep_time"), u32)?;
-    let relax_time = value_t!(matches.value_of("relax_time"), u32)?;
+    let num_reps = *matches.get_one::<u32>("num_reps").unwrap();
+    let rep_time = *matches.get_one::<u32>("rep_time").unwrap();
+    let relax_time = *matches.get_one::<u32>("relax_time").unwrap();
     Ok(Options {
         num_reps,
         rep_time,
